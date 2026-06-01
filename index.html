@@ -264,7 +264,20 @@ const MUNICIPIOS = {
   "Vichada":[["Cumaribo",4.44635,-69.79553],["La Primavera",5.48631,-70.41052],["Puerto Carreño",6.18664,-67.48709],["Santa Rosalía",5.13639,-70.8595]]
 };
 
-let map, marker, punto=null, metodo=null;
+let map, marker, punto=null, metodo=null, municipioActual="", departamentoActual="";
+
+/* ---- Halla el municipio más cercano a una coordenada (entre los 1.122) ---- */
+function municipioMasCercano(lat, lon){
+  let mejor=null, mejorDist=Infinity;
+  for(const dep in MUNICIPIOS){
+    for(const [nombre, la, lo] of MUNICIPIOS[dep]){
+      const dLat=lat-la, dLon=(lon-lo)*Math.cos(lat*Math.PI/180);
+      const dist=dLat*dLat + dLon*dLon; // distancia relativa (suficiente para comparar)
+      if(dist<mejorDist){ mejorDist=dist; mejor={municipio:nombre, departamento:dep, km:Math.sqrt(dist)*111}; }
+    }
+  }
+  return mejor;
+}
 
 /* ---- Mapa ---- */
 map = L.map('map').setView([6.5,-75.0], 7);
@@ -276,15 +289,27 @@ map.on('click', e=>{
   fijarPunto(e.latlng.lat, e.latlng.lng, 'map');
 });
 
-function fijarPunto(lat, lon, met){
+function fijarPunto(lat, lon, met, munForzado, depForzado){
   punto = {lat:lat, lon:lon};
   metodo = met;
   if(marker) map.removeLayer(marker);
   marker = L.marker([lat,lon]).addTo(map);
   map.setView([lat,lon], Math.max(map.getZoom(),10));
   resaltar(met);
+
+  // Resolver municipio/departamento
+  if(munForzado){
+    municipioActual = munForzado;
+    departamentoActual = depForzado;
+  } else {
+    const m = municipioMasCercano(lat, lon);
+    municipioActual = m ? m.municipio : "";
+    departamentoActual = m ? m.departamento : "";
+  }
+
   document.getElementById('puntoSel').textContent =
-     '◉ ' + lat.toFixed(5) + ', ' + lon.toFixed(5);
+     '◉ ' + lat.toFixed(5) + ', ' + lon.toFixed(5) +
+     (municipioActual ? '  ·  ' + municipioActual + ', ' + departamentoActual : '');
   document.getElementById('estado').textContent = 'Punto marcado. Verifíquelo en el mapa antes de solicitar.';
   validar();
 }
@@ -342,7 +367,8 @@ function cargarMunis(){
 function aplicarMuni(){
   const opt=document.getElementById('muni').selectedOptions[0];
   if(!opt || !opt.dataset.lat) return;
-  fijarPunto(parseFloat(opt.dataset.lat), parseFloat(opt.dataset.lon),'muni');
+  const dep=document.getElementById('depto').value;
+  fijarPunto(parseFloat(opt.dataset.lat), parseFloat(opt.dataset.lon),'muni', opt.textContent, dep);
 }
 
 /* ---- Solicitar análisis ---- */
@@ -363,12 +389,15 @@ function solicitar(){
     codigo_caso:codigo,
     usuario:u,
     lat:punto.lat, lon:punto.lon, metodo:metodo,
+    municipio:municipioActual,
+    departamento:departamentoActual,
     fecha_ingreso:ahora.toISOString(),
     fecha_legible:ahora.toLocaleString('es-CO')
   };
   document.getElementById('ticketCaso').textContent = codigo;
   document.getElementById('ticketPt').textContent =
-     '◉ '+punto.lat.toFixed(5)+', '+punto.lon.toFixed(5);
+     '◉ '+punto.lat.toFixed(5)+', '+punto.lon.toFixed(5) +
+     (municipioActual ? '  ·  '+municipioActual+', '+departamentoActual : '');
   document.getElementById('ticketFecha').textContent = ahora.toLocaleString('es-CO');
   document.getElementById('overlay').classList.add('show');
 
@@ -378,7 +407,7 @@ function solicitar(){
 }
 function cerrarAcuse(){
   document.getElementById('overlay').classList.remove('show');
-  punto=null; metodo=null;
+  punto=null; metodo=null; municipioActual=""; departamentoActual="";
   if(marker){map.removeLayer(marker); marker=null;}
   document.getElementById('puntoSel').textContent='';
   document.getElementById('estado').textContent='Marque un punto para habilitar la solicitud.';
