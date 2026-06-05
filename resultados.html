@@ -112,7 +112,34 @@
     <div class="caso" id="casoPunto">CS-20261010-DEMO</div>
   </div>
 
-  <div id="map"></div>
+  <div id="mapaConControles" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+    <div id="map" style="flex:1;min-width:280px;"></div>
+    <div id="panelControles" style="width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;">
+
+      <div style="background:#0d1520;border:1px solid #243447;border-radius:8px;padding:10px 12px;font-size:12px;color:#dde6f0;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span>📍 Distancia máx.</span><b id="valDistancia" style="color:#e0a830;">30 km</b>
+        </div>
+        <input type="range" id="sliderDistancia" min="0" max="30" value="30" step="1" style="width:100%;accent-color:#e0a830;cursor:pointer;">
+      </div>
+
+      <div style="background:#0d1520;border:1px solid #243447;border-radius:8px;padding:10px 12px;font-size:12px;color:#dde6f0;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span>🕒 Últimos</span><b id="valTiempo" style="color:#e0a830;">90 días</b>
+        </div>
+        <input type="range" id="sliderTiempo" min="1" max="90" value="90" step="1" style="width:100%;accent-color:#e0a830;cursor:pointer;">
+      </div>
+
+      <div style="background:#0d1520;border:1px solid #243447;border-radius:8px;padding:8px 12px;font-size:12px;color:#8aa;text-align:center;">
+        <span id="contHechos">—</span>
+      </div>
+
+      <div id="fichaDetalle" style="background:#0d1520;border:1px solid #243447;border-radius:8px;padding:10px 12px;font-size:12px;color:#dde6f0;min-height:60px;display:flex;align-items:center;justify-content:center;text-align:center;color:#5a6b7a;">
+        Pasa el cursor sobre un punto del mapa para ver el detalle
+      </div>
+
+    </div>
+  </div>
 
   <!-- BLOQUE COMPACTO DE DATOS DE INTERÉS -->
   <div class="interes">
@@ -133,7 +160,7 @@
     </div>
   </div>
 
-  <!-- HECHOS (ejemplo) -->
+  <!-- HECHOS -->
   <div class="seccion">Hechos recientes · 24h y último mes</div>
   <div id="hechos"></div>
 
@@ -141,7 +168,7 @@
   <div class="seccion">Fechas de riesgo cercanas · próximos 45 días</div>
   <div id="calendario"></div>
 
-  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v6</div>
+  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v9</div>
 </div>
 
 <script>
@@ -267,11 +294,29 @@ function renderHechos(){
       try{
         const icono = L.divIcon({
           className:'',
-          html:`<div style="font-size:22px;line-height:22px;text-shadow:0 0 3px #000,0 0 3px #000;">${h.emoji}</div>`,
+          html:`<div style="font-size:22px;line-height:22px;text-shadow:0 0 3px #000,0 0 3px #000;cursor:pointer;">${h.emoji}</div>`,
           iconSize:[24,24], iconAnchor:[12,12]
         });
-        L.marker([h.lat,h.lon],{icon:icono}).addTo(capaHechos)
+        const marcador = L.marker([h.lat,h.lon],{icon:icono}).addTo(capaHechos)
           .bindPopup(`<b>${h.emoji} ${etiquetaTipo(h.tipo)}</b><br>${h.titular}<br><small>${h.meta}</small><br><small>Fuente: ${h.fuente}</small>`);
+
+        // Al pasar el cursor: mostrar la noticia en la ficha de detalle
+        marcador.on('mouseover', function(){
+          const ficha=document.getElementById('fichaDetalle');
+          ficha.style.color='#dde6f0';
+          ficha.innerHTML=`<div style="text-align:left;width:100%;">
+            <div style="font-size:20px;">${h.emoji} <b style="color:#e0a830;">${etiquetaTipo(h.tipo)}</b></div>
+            <div style="margin:5px 0;">${h.titular}</div>
+            <div style="color:#8aa;font-size:11px;">${h.meta}</div>
+            <div style="color:#8aa;font-size:11px;">↗ ${h.fuente}</div>
+          </div>`;
+        });
+        marcador.on('mouseout', function(){
+          const ficha=document.getElementById('fichaDetalle');
+          ficha.style.color='#5a6b7a';
+          ficha.style.textAlign='center';
+          ficha.innerHTML='Pasa el cursor sobre un punto del mapa para ver el detalle';
+        });
       }catch(e){ console.warn('No se pudo pintar un punto:', e); }
     });
   }catch(e){ console.warn('No se pudieron pintar los puntos en el mapa:', e); }
@@ -525,15 +570,43 @@ function cargarHechos(){
 
       // ordenar del más cercano al más lejano
       lista.sort((a,b)=>a.dist-b.dist);
-      HECHOS=lista;
-      renderHechos();
+      HECHOS_TODOS = lista;        // todos los hechos del radio completo
+      aplicarFiltros();    // muestra según el slider
       construirConvencion();
     })
     .catch(err=>{
       console.error('Error cargando hechos:', err);
-      HECHOS=[]; renderHechos();
+      HECHOS_TODOS=[]; HECHOS=[]; renderHechos();
     });
 }
+
+/* ====== Filtros de distancia y tiempo (sliders) ====== */
+let HECHOS_TODOS = [];
+function aplicarFiltros(){
+  const maxDist = parseInt(document.getElementById('sliderDistancia').value, 10);
+  const maxDias = parseInt(document.getElementById('sliderTiempo').value, 10);
+  document.getElementById('valDistancia').textContent = maxDist + ' km';
+  document.getElementById('valTiempo').textContent = maxDias + ' días';
+
+  HECHOS = HECHOS_TODOS.filter(h=>{
+    if(h.dist > maxDist) return false;
+    // filtro por tiempo: cuántos días tiene el hecho
+    if(h.fecha){
+      const f=new Date(h.fecha);
+      if(!isNaN(f)){
+        const dias=(Date.now()-f.getTime())/86400000;
+        if(dias > maxDias) return false;
+      }
+    }
+    return true;
+  });
+
+  document.getElementById('contHechos').textContent = HECHOS.length + ' de ' + HECHOS_TODOS.length + ' hechos';
+  renderHechos();
+}
+// mover cualquiera de los dos sliders vuelve a filtrar
+document.getElementById('sliderDistancia').addEventListener('input', aplicarFiltros);
+document.getElementById('sliderTiempo').addEventListener('input', aplicarFiltros);
 
 /* ====== Convención de tipos (leyenda) ====== */
 function construirConvencion(){
