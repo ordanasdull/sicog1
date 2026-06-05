@@ -141,7 +141,7 @@
   <div class="seccion">Fechas de riesgo cercanas · próximos 45 días</div>
   <div id="calendario"></div>
 
-  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v3</div>
+  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v4</div>
 </div>
 
 <script>
@@ -260,13 +260,15 @@ function renderHechos(){
 
     // Punto en el mapa con su emoji
     if(h.lat && h.lon){
-      const icono = L.divIcon({
-        className:'',
-        html:`<div style="font-size:22px;line-height:22px;text-shadow:0 0 3px #000,0 0 3px #000;">${h.emoji}</div>`,
-        iconSize:[24,24], iconAnchor:[12,12]
-      });
-      L.marker([h.lat,h.lon],{icon:icono}).addTo(capaHechos)
-        .bindPopup(`<b>${h.emoji} ${etiquetaTipo(h.tipo)}</b><br>${h.titular}<br><small>${h.meta}</small><br><small>Fuente: ${h.fuente}</small>`);
+      try{
+        const icono = L.divIcon({
+          className:'',
+          html:`<div style="font-size:22px;line-height:22px;text-shadow:0 0 3px #000,0 0 3px #000;">${h.emoji}</div>`,
+          iconSize:[24,24], iconAnchor:[12,12]
+        });
+        L.marker([h.lat,h.lon],{icon:icono}).addTo(capaHechos)
+          .bindPopup(`<b>${h.emoji} ${etiquetaTipo(h.tipo)}</b><br>${h.titular}<br><small>${h.meta}</small><br><small>Fuente: ${h.fuente}</small>`);
+      }catch(e){ console.warn('No se pudo pintar un punto:', e); }
     }
   });
 }
@@ -346,7 +348,7 @@ L.control.layers({
 
 // marcador del punto
 L.marker([PUNTO.lat, PUNTO.lon]).addTo(map)
-  .bindPopup('<b>'+PUNTO.municipio+', '+PUNTO.departamento+'</b><br>Punto consultado').openPopup();
+  .bindPopup('<b>'+PUNTO.municipio+', '+PUNTO.departamento+'</b><br>Punto consultado');
 
 // círculo del radio de búsqueda (30 km)
 const RADIO_KM = 30;
