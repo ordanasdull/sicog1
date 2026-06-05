@@ -168,7 +168,7 @@
   <div class="seccion">Fechas de riesgo cercanas · próximos 45 días</div>
   <div id="calendario"></div>
 
-  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v9</div>
+  <div class="foot">SICOG · conciencia situacional · datos en vivo desde por código de caso · v10</div>
 </div>
 
 <script>
@@ -211,8 +211,11 @@ const MUNICIPIOS = {
   "Vichada":[["Cumaribo",4.44635,-69.79553],["La Primavera",5.48631,-70.41052],["Puerto Carreño",6.18664,-67.48709],["Santa Rosalía",5.13639,-70.8595]]
 };
 
-/* ====== Punto del ejemplo (luego vendrá del informe real) ====== */
-const PUNTO = { municipio:"Segovia", departamento:"Antioquia", lat:7.08, lon:-74.70 };
+/* ====== Punto: se llena con los datos del caso consultado ====== */
+let PUNTO = { municipio:"", departamento:"", lat:null, lon:null };
+
+// Leer el código de caso de la dirección (?caso=CS-...)
+const CASO = new URLSearchParams(window.location.search).get('caso');
 
 /* ====== Conexión a la base de datos real (HECHOS_DB vía Apps Script) ====== */
 const API_URL = "https://script.google.com/macros/s/AKfycbwcr6b1SovSTmcF0MlPp-ubVbfYaUSlpKmxjgZneYw9lT6QEbs_AVP-6N4nWzUGoOfa/exec";
@@ -373,69 +376,98 @@ if(encontrados.length===0){
   });
 }
 
-/* ====== Mapa con relieve, ríos y vías ====== */
-const map = L.map('map').setView([PUNTO.lat, PUNTO.lon], 11);
-
-// Capa 1: Relieve y terreno (OpenTopoMap: resalta montañas, ríos, vías)
-const capaRelieve = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
-  maxZoom:17, attribution:'© OpenTopoMap, © OpenStreetMap'
-});
-
-// Capa 2: Satélite (foto aérea real Esri: vegetación, cultivos, zonas de minería)
-const capaSatelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
-  maxZoom:18, attribution:'© Esri, Maxar, Earthstar Geographics'
-});
-
-// Relieve es la vista por defecto al abrir
-capaRelieve.addTo(map);
-
-// Selector de capas (como en Google Maps: esquina superior derecha del mapa)
-L.control.layers({
-  "Relieve": capaRelieve,
-  "Satélite": capaSatelite
-}, null, {position:'topright', collapsed:false}).addTo(map);
-
-// marcador del punto
-L.marker([PUNTO.lat, PUNTO.lon]).addTo(map)
-  .bindPopup('<b>'+PUNTO.municipio+', '+PUNTO.departamento+'</b><br>Punto consultado');
-
-// círculo del radio de búsqueda (30 km)
+/* ====== Mapa: se construye cuando ya tenemos el punto del caso ====== */
+let map, capaRelieve, capaSatelite, circuloRadio;
 const RADIO_KM = 30;
-const circuloRadio = L.circle([PUNTO.lat, PUNTO.lon], {
-  radius: RADIO_KM*1000,
-  color:'#e0a830', weight:1.5, fillColor:'#e0a830', fillOpacity:0.06
-});
-circuloRadio.addTo(map);
-try{ map.fitBounds(circuloRadio.getBounds(), {padding:[20,20]}); }
-catch(e){ map.setView([PUNTO.lat,PUNTO.lon], 11); }
 
-/* ====== Herramienta de medir distancias ====== */
-let midiendo=false, puntosMedida=[], capaMedida=L.layerGroup().addTo(map);
+function iniciarMapa(){
+  map = L.map('map').setView([PUNTO.lat, PUNTO.lon], 11);
 
-// Botón de medir (control propio en la esquina inferior izquierda)
-const ctrlMedir = L.control({position:'bottomleft'});
-ctrlMedir.onAdd = function(){
-  const div=L.DomUtil.create('div');
-  div.innerHTML='<button id="btnMedir" style="background:#131e2b;color:#e0a830;border:1px solid #243447;'+
-    'padding:7px 12px;border-radius:6px;font-family:monospace;font-size:12px;cursor:pointer;">📏 Medir distancia</button>';
-  L.DomEvent.disableClickPropagation(div);
-  return div;
-};
-ctrlMedir.addTo(map);
+  // Capa 1: Relieve y terreno
+  capaRelieve = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
+    maxZoom:17, attribution:'© OpenTopoMap, © OpenStreetMap'
+  });
+  // Capa 2: Satélite (foto aérea real Esri)
+  capaSatelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    maxZoom:18, attribution:'© Esri, Maxar, Earthstar Geographics'
+  });
+  capaRelieve.addTo(map);
 
-// Cartelito que muestra el total
-const ctrlTotal = L.control({position:'bottomleft'});
-ctrlTotal.onAdd = function(){
-  const div=L.DomUtil.create('div');
-  div.id='medidaTotal';
-  div.style.cssText='background:#0d1520;color:#dde6f0;border:1px solid #243447;padding:6px 10px;'+
-    'border-radius:6px;font-family:monospace;font-size:12px;margin-top:6px;display:none;';
-  return div;
-};
-ctrlTotal.addTo(map);
+  L.control.layers({ "Relieve": capaRelieve, "Satélite": capaSatelite },
+    null, {position:'topright', collapsed:false}).addTo(map);
+
+  // marcador del punto
+  L.marker([PUNTO.lat, PUNTO.lon]).addTo(map)
+    .bindPopup('<b>'+PUNTO.municipio+', '+PUNTO.departamento+'</b><br>Punto consultado');
+
+  // círculo del radio de búsqueda (30 km)
+  circuloRadio = L.circle([PUNTO.lat, PUNTO.lon], {
+    radius: RADIO_KM*1000,
+    color:'#e0a830', weight:1.5, fillColor:'#e0a830', fillOpacity:0.06
+  });
+  circuloRadio.addTo(map);
+  try{ map.fitBounds(circuloRadio.getBounds(), {padding:[20,20]}); }
+  catch(e){ map.setView([PUNTO.lat,PUNTO.lon], 11); }
+
+  iniciarHerramientasMapa();
+}
+
+/* ====== Herramienta de medir distancias (se activa con el mapa) ====== */
+let midiendo=false, puntosMedida=[], capaMedida=null;
+
+function iniciarHerramientasMapa(){
+  capaMedida = L.layerGroup().addTo(map);
+
+  const ctrlMedir = L.control({position:'bottomleft'});
+  ctrlMedir.onAdd = function(){
+    const div=L.DomUtil.create('div');
+    div.innerHTML='<button id="btnMedir" style="background:#131e2b;color:#e0a830;border:1px solid #243447;'+
+      'padding:7px 12px;border-radius:6px;font-family:monospace;font-size:12px;cursor:pointer;">📏 Medir distancia</button>';
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  };
+  ctrlMedir.addTo(map);
+
+  const ctrlTotal = L.control({position:'bottomleft'});
+  ctrlTotal.onAdd = function(){
+    const div=L.DomUtil.create('div');
+    div.id='medidaTotal';
+    div.style.cssText='background:#0d1520;color:#dde6f0;border:1px solid #243447;padding:6px 10px;'+
+      'border-radius:6px;font-family:monospace;font-size:12px;margin-top:6px;display:none;';
+    return div;
+  };
+  ctrlTotal.addTo(map);
+
+  document.addEventListener('click',function(e){
+    if(e.target && e.target.id==='btnMedir'){
+      midiendo=!midiendo;
+      e.target.style.background = midiendo ? '#e0a830' : '#131e2b';
+      e.target.style.color = midiendo ? '#0d1520' : '#e0a830';
+      e.target.textContent = midiendo ? '📏 Midiendo… (clic en el mapa)' : '📏 Medir distancia';
+      if(!midiendo){ capaMedida.clearLayers(); puntosMedida=[]; actualizarTotal(); }
+    }
+  });
+
+  map.on('click',function(e){
+    if(!midiendo) return;
+    puntosMedida.push(e.latlng);
+    L.circleMarker(e.latlng,{radius:4,color:'#e0a830',fillColor:'#e0a830',fillOpacity:1}).addTo(capaMedida);
+    if(puntosMedida.length>1){
+      const a=puntosMedida[puntosMedida.length-2], b=puntosMedida[puntosMedida.length-1];
+      L.polyline([a,b],{color:'#e0a830',weight:2,dashArray:'5,5'}).addTo(capaMedida);
+      const tramo=distKm(a.lat,a.lng,b.lat,b.lng);
+      L.marker([(a.lat+b.lat)/2,(a.lng+b.lng)/2],{
+        icon:L.divIcon({className:'',html:'<div style="background:#0d1520;color:#e0a830;border:1px solid #243447;'+
+          'padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px;white-space:nowrap;">'+tramo.toFixed(1)+' km</div>',iconSize:[0,0]})
+      }).addTo(capaMedida);
+    }
+    actualizarTotal();
+  });
+}
 
 function actualizarTotal(){
   const cartel=document.getElementById('medidaTotal');
+  if(!cartel) return;
   if(puntosMedida.length<2){ cartel.style.display='none'; return; }
   let total=0;
   for(let i=1;i<puntosMedida.length;i++){
@@ -445,42 +477,14 @@ function actualizarTotal(){
   cartel.innerHTML='Distancia total: <b style="color:#e0a830;">'+total.toFixed(2)+' km</b>';
 }
 
-document.addEventListener('click',function(e){
-  if(e.target && e.target.id==='btnMedir'){
-    midiendo=!midiendo;
-    e.target.style.background = midiendo ? '#e0a830' : '#131e2b';
-    e.target.style.color = midiendo ? '#0d1520' : '#e0a830';
-    e.target.textContent = midiendo ? '📏 Midiendo… (clic en el mapa)' : '📏 Medir distancia';
-    if(!midiendo){
-      // al apagar, limpiar
-      capaMedida.clearLayers(); puntosMedida=[]; actualizarTotal();
-    }
-  }
-});
-
-map.on('click',function(e){
-  if(!midiendo) return;
-  puntosMedida.push(e.latlng);
-  L.circleMarker(e.latlng,{radius:4,color:'#e0a830',fillColor:'#e0a830',fillOpacity:1}).addTo(capaMedida);
-  if(puntosMedida.length>1){
-    const a=puntosMedida[puntosMedida.length-2], b=puntosMedida[puntosMedida.length-1];
-    L.polyline([a,b],{color:'#e0a830',weight:2,dashArray:'5,5'}).addTo(capaMedida);
-    const tramo=distKm(a.lat,a.lng,b.lat,b.lng);
-    L.marker([(a.lat+b.lat)/2,(a.lng+b.lng)/2],{
-      icon:L.divIcon({className:'',html:'<div style="background:#0d1520;color:#e0a830;border:1px solid #243447;'+
-        'padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px;white-space:nowrap;">'+tramo.toFixed(1)+' km</div>',iconSize:[0,0]})
-    }).addTo(capaMedida);
-  }
-  actualizarTotal();
-});
-
 /* ====== Municipios cercanos ====== */
 function distKm(lat1,lon1,lat2,lon2){
   const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
   const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
-if(typeof MUNICIPIOS!=="undefined"){
+function iniciarContexto(){
+ if(typeof MUNICIPIOS!=="undefined"){
   let cercanos=[];
   for(const dep in MUNICIPIOS){
     for(const [nombre,la,lo] of MUNICIPIOS[dep]){
@@ -493,25 +497,21 @@ if(typeof MUNICIPIOS!=="undefined"){
     L.circleMarker([c.la,c.lo],{radius:5,color:'#7d92a8',weight:1,fillColor:'#2f9e7a',fillOpacity:0.7})
       .addTo(map).bindPopup('<b>'+c.nombre+'</b><br>'+c.d.toFixed(1)+' km · '+c.dep);
   });
-  // resumen en el bloque compacto
   const top3 = cercanos.slice(0,3).map(c=>c.nombre+' ('+c.d.toFixed(0)+'km)');
   document.getElementById('muniVal').innerHTML = top3.length ? top3.join('<br>') : '—';
-}
+ }
 
-/* ====== Puesto de salud más cercano (OpenStreetMap / Overpass) ====== */
-const saludVal = document.getElementById('saludVal');
-const radioSalud = 25000; // 25 km
-const query = `[out:json][timeout:25];(
-  node["amenity"~"hospital|clinic|doctors"](around:${radioSalud},${PUNTO.lat},${PUNTO.lon});
-  node["healthcare"](around:${radioSalud},${PUNTO.lat},${PUNTO.lon});
-);out body;`;
-fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(query)})
+ /* Puesto de salud más cercano (OpenStreetMap / Overpass) */
+ const saludVal = document.getElementById('saludVal');
+ const radioSalud = 25000;
+ const query = `[out:json][timeout:25];(
+   node["amenity"~"hospital|clinic|doctors"](around:${radioSalud},${PUNTO.lat},${PUNTO.lon});
+   node["healthcare"](around:${radioSalud},${PUNTO.lat},${PUNTO.lon});
+ );out body;`;
+ fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(query)})
   .then(r=>r.json())
   .then(data=>{
-    if(!data.elements || data.elements.length===0){
-      saludVal.innerHTML='No registrado en 25 km';
-      return;
-    }
+    if(!data.elements || data.elements.length===0){ saludVal.innerHTML='No registrado en 25 km'; return; }
     let mejor=null;
     data.elements.forEach(e=>{
       const d=distKm(PUNTO.lat,PUNTO.lon,e.lat,e.lon);
@@ -525,15 +525,13 @@ fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+enco
   })
   .catch(()=>{ saludVal.innerHTML='No disponible'; });
 
-/* mostrar punto */
-document.getElementById('nmPunto').textContent = PUNTO.municipio+", "+PUNTO.departamento;
+ document.getElementById('nmPunto').textContent = PUNTO.municipio+", "+PUNTO.departamento;
+}
 
-/* ====== Cargar hechos reales desde la base de datos y filtrar a 30 km ====== */
-function cargarHechos(){
-  fetch(API_URL)
-    .then(r=>r.json())
-    .then(data=>{
-      if(!data.ok || !data.hechos){ HECHOS=[]; renderHechos(); return; }
+/* ====== Procesar los hechos de la base (ya traídos) y filtrar a 30 km ====== */
+function cargarHechos(data){
+  try{
+      if(!data || !data.ok || !data.hechos){ HECHOS_TODOS=[]; HECHOS=[]; renderHechos(); return; }
 
       const lista=[];
       data.hechos.forEach(reg=>{
@@ -568,16 +566,14 @@ function cargarHechos(){
         });
       });
 
-      // ordenar del más cercano al más lejano
       lista.sort((a,b)=>a.dist-b.dist);
-      HECHOS_TODOS = lista;        // todos los hechos del radio completo
-      aplicarFiltros();    // muestra según el slider
+      HECHOS_TODOS = lista;
+      aplicarFiltros();
       construirConvencion();
-    })
-    .catch(err=>{
-      console.error('Error cargando hechos:', err);
+  }catch(err){
+      console.error('Error procesando hechos:', err);
       HECHOS_TODOS=[]; HECHOS=[]; renderHechos();
-    });
+  }
 }
 
 /* ====== Filtros de distancia y tiempo (sliders) ====== */
@@ -629,13 +625,81 @@ function construirConvencion(){
   cont.innerHTML=html;
 }
 
-// arrancar la carga cuando la página y el mapa estén listos
+/* ====== Sección OSINT / Fuentes abiertas (noticias de internet) ====== */
+function renderOSINT(noticias){
+  let cont=document.getElementById('osint');
+  if(!cont){
+    cont=document.createElement('div');
+    cont.id='osint';
+    const calSec=document.getElementById('calendario');
+    calSec.parentNode.insertBefore(cont, calSec); // antes del calendario
+  }
+  let html='<div class="seccion" style="color:#6fa8dc;">📰 OSINT · Fuentes abiertas (internet)</div>';
+  const validas=(noticias||[]).filter(n=>n && (n.titular||'').toString().trim()!=='');
+  if(validas.length===0){
+    html+='<div style="background:#0e1622;border:1px solid #24405c;border-left:3px solid #3d6a99;border-radius:8px;padding:10px 12px;font-size:12px;color:#8aa;">Sin noticias de internet para este caso.</div>';
+    cont.innerHTML=html; return;
+  }
+  validas.forEach(n=>{
+    const g = n.gravedad ? (n.gravedad+'/10') : '';
+    const url = (n.url||'').toString().trim();
+    const linkFuente = url ? `<a href="${url}" target="_blank" style="color:#6fa8dc;text-decoration:none;">↗ ${n.fuente||'fuente'}</a>` : (n.fuente||'');
+    html+=`<div style="background:#0e1622;border:1px solid #24405c;border-left:3px solid #3d6a99;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#dde6f0;">
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <b style="color:#a9cdf0;">${n.titular}</b>
+        <span style="color:#6fa8dc;white-space:nowrap;">${g}</span>
+      </div>
+      <div style="color:#9fb3c8;margin:4px 0;">${n.frase||''}</div>
+      <div style="color:#7d92a8;font-size:11px;">${n.fecha_hecho||''} · ${linkFuente} · ${n.confianza?('confianza '+n.confianza):''}</div>
+    </div>`;
+  });
+  html+='<div style="font-size:11px;color:#5a6b7a;margin-bottom:6px;">Información de prensa abierta · contrastar antes de usar operacionalmente.</div>';
+  cont.innerHTML=html;
+}
+
+/* ====== Pantalla de bloqueo cuando no hay código de caso ====== */
+function mostrarBloqueo(){
+  document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a121c;color:#dde6f0;font-family:monospace;text-align:center;padding:20px;">'+
+    '<div><div style="font-size:40px;margin-bottom:12px;">🛰️</div>'+
+    '<div style="font-size:22px;color:#e0a830;letter-spacing:2px;margin-bottom:8px;">BRCMI · SICOG</div>'+
+    '<div style="font-size:15px;margin-bottom:6px;">Ingrese un código de caso para ver los resultados</div>'+
+    '<div style="font-size:12px;color:#7d92a8;">Acceso por enlace autorizado · ejemplo: ?caso=CS-XXXXXXXX-XXXX</div>'+
+    '</div></div>';
+}
+
+/* ====== ARRANQUE: todo gira alrededor del código de caso ====== */
 window.addEventListener('load', function(){
-  // dar al mapa un instante para calcular su tamaño antes de pintar puntos
-  setTimeout(function(){
-    if(typeof map!=='undefined' && map.invalidateSize){ map.invalidateSize(); }
-    cargarHechos();
-  }, 400);
+  if(!CASO){ mostrarBloqueo(); return; }
+
+  fetch(API_URL + '?caso=' + encodeURIComponent(CASO))
+    .then(r=>r.json())
+    .then(data=>{
+      if(!data.ok){ mostrarBloqueo(); return; }
+
+      // 1) Fijar el punto desde la solicitud del caso
+      const sol = data.solicitud;
+      if(!sol || sol.lat===''||sol.lat==null){ mostrarBloqueo(); return; }
+      PUNTO.municipio = sol.municipio || 'Punto consultado';
+      PUNTO.departamento = sol.departamento || '';
+      PUNTO.lat = parseFloat(String(sol.lat).replace(',','.'));
+      PUNTO.lon = parseFloat(String(sol.lon).replace(',','.'));
+
+      // mostrar el código de caso en el encabezado
+      const elCaso=document.getElementById('casoPunto'); if(elCaso) elCaso.textContent=CASO;
+
+      // 2) Construir el mapa con el punto real
+      iniciarMapa();
+      setTimeout(function(){ if(map && map.invalidateSize) map.invalidateSize(); }, 300);
+
+      // 3) Contexto (municipios + salud), hechos de base, y noticias OSINT
+      iniciarContexto();
+      cargarHechos(data);
+      renderOSINT(data.noticias);
+    })
+    .catch(err=>{
+      console.error('Error cargando el caso:', err);
+      mostrarBloqueo();
+    });
 });
 </script>
 </body>
