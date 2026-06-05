@@ -141,7 +141,7 @@
   <div class="seccion">Fechas de riesgo cercanas · próximos 45 días</div>
   <div id="calendario"></div>
 
-  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v4</div>
+  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v5</div>
 </div>
 
 <script>
@@ -239,15 +239,14 @@ let capaHechos = null;
 function renderHechos(){
   const cH=document.getElementById('hechos');
   cH.innerHTML='';
-  if(capaHechos){ capaHechos.clearLayers(); } else { capaHechos = L.layerGroup().addTo(map); }
 
   if(HECHOS.length===0){
     cH.innerHTML='<div class="card" style="border-left-color:var(--muted)"><div class="top"><span class="emoji">✓</span><div class="tit">Sin hechos en la base dentro de '+RADIO_HECHOS_KM+' km<div class="meta">No hay registros cercanos al punto consultado</div></div></div></div>';
     return;
   }
 
+  // 1) PRIMERO las tarjetas del panel (esto nunca depende del mapa)
   HECHOS.forEach(h=>{
-    // Tarjeta en el panel
     const gColor=colorGrav(h.grav);
     const d=document.createElement('div'); d.className='card';
     d.style.borderLeftColor=gColor;
@@ -257,9 +256,14 @@ function renderHechos(){
        <div class="right"><div class="grav" style="color:${gColor}">${h.grav?h.grav+'/10':''}</div></div>
      </div>`;
     cH.appendChild(d);
+  });
 
-    // Punto en el mapa con su emoji
-    if(h.lat && h.lon){
+  // 2) DESPUÉS los puntos en el mapa, todo protegido por si el mapa falla
+  try{
+    if(typeof map==='undefined'){ return; }
+    if(capaHechos){ capaHechos.clearLayers(); } else { capaHechos = L.layerGroup().addTo(map); }
+    HECHOS.forEach(h=>{
+      if(!h.lat || !h.lon) return;
       try{
         const icono = L.divIcon({
           className:'',
@@ -269,8 +273,8 @@ function renderHechos(){
         L.marker([h.lat,h.lon],{icon:icono}).addTo(capaHechos)
           .bindPopup(`<b>${h.emoji} ${etiquetaTipo(h.tipo)}</b><br>${h.titular}<br><small>${h.meta}</small><br><small>Fuente: ${h.fuente}</small>`);
       }catch(e){ console.warn('No se pudo pintar un punto:', e); }
-    }
-  });
+    });
+  }catch(e){ console.warn('No se pudieron pintar los puntos en el mapa:', e); }
 }
 
 /* ====== CALENDARIO: cruce por tiempo y lugar ====== */
