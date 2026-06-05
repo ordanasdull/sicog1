@@ -141,7 +141,7 @@
   <div class="seccion">Fechas de riesgo cercanas · próximos 45 días</div>
   <div id="calendario"></div>
 
-  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v2</div>
+  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v3</div>
 </div>
 
 <script>
@@ -548,8 +548,14 @@ function construirConvencion(){
   cont.innerHTML=html;
 }
 
-// arrancar la carga
-cargarHechos();
+// arrancar la carga cuando la página y el mapa estén listos
+window.addEventListener('load', function(){
+  // dar al mapa un instante para calcular su tamaño antes de pintar puntos
+  setTimeout(function(){
+    if(typeof map!=='undefined' && map.invalidateSize){ map.invalidateSize(); }
+    cargarHechos();
+  }, 400);
+});
 </script>
 </body>
 </html>
