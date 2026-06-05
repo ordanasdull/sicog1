@@ -141,7 +141,7 @@
   <div class="seccion">Fechas de riesgo cercanas · próximos 45 días</div>
   <div id="calendario"></div>
 
-  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v5</div>
+  <div class="foot">SICOG · conciencia situacional · datos en vivo desde base de datos · v6</div>
 </div>
 
 <script>
@@ -356,11 +356,13 @@ L.marker([PUNTO.lat, PUNTO.lon]).addTo(map)
 
 // círculo del radio de búsqueda (30 km)
 const RADIO_KM = 30;
-L.circle([PUNTO.lat, PUNTO.lon], {
+const circuloRadio = L.circle([PUNTO.lat, PUNTO.lon], {
   radius: RADIO_KM*1000,
   color:'#e0a830', weight:1.5, fillColor:'#e0a830', fillOpacity:0.06
-}).addTo(map);
-map.fitBounds(L.circle([PUNTO.lat,PUNTO.lon],{radius:RADIO_KM*1000}).getBounds(), {padding:[20,20]});
+});
+circuloRadio.addTo(map);
+try{ map.fitBounds(circuloRadio.getBounds(), {padding:[20,20]}); }
+catch(e){ map.setView([PUNTO.lat,PUNTO.lon], 11); }
 
 /* ====== Herramienta de medir distancias ====== */
 let midiendo=false, puntosMedida=[], capaMedida=L.layerGroup().addTo(map);
